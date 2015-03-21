@@ -21,6 +21,16 @@ function randfloat(from, to)
     return Math.random() * (to - from) + from;
 }
 
+function constrain(val, from, to)
+{
+	if(val > to)
+		return to;
+	if(val < from)
+		return from;
+
+	return val;
+}
+
 (function()
 {
 	var SpriteType =
@@ -49,7 +59,9 @@ function randfloat(from, to)
 		ROCK			: ["res\\img\\rock0.png", "res\\img\\rock1.png", "res\\img\\rock2.png", "res\\img\\rock3.png", "res\\img\\rock4.png", "res\\img\\rock5.png", "res\\img\\rock6.png"],
 		BACKGROUND		: ["res\\img\\background0.png", "res\\img\\background1.png"],
 		DEBRIS			: ["res\\img\\debris0.png", "res\\img\\debris1.png"],
-		EXPLOSION		: ["res\\anim\\explosion0.png", "res\\anim\\explosion1.png", "res\\anim\\explosion2.png", "res\\anim\\explosion3.png", "res\\anim\\explosion4.png", "res\\anim\\explosion5.png"]
+		EXPLOSION		: ["res\\anim\\explosion0.png", "res\\anim\\explosion1.png", "res\\anim\\explosion2.png", "res\\anim\\explosion3.png", "res\\anim\\explosion4.png", "res\\anim\\explosion5.png"],
+		SHIELD			: ["res\\img\\shield0.png", "res\\img\\shield1.png"],
+		SHIELD_ICON		: ["res\\img\\shieldIcon.png"]
 	};
 
 	var entityImages = {};
@@ -88,22 +100,6 @@ function randfloat(from, to)
 		var rad1	= obj1.sprite.radius;
 		var rad2	= obj2.sprite.radius;
 
-		// var pos1x	= obj1.pos.x;
-		// var pos1y	= obj1.pos.y;
-
-		// var i = offsets.length;
-		// while(i--)
-		// {
-		// 	var pos2x	= obj2.pos.x + offsets[i][0];
-		// 	var pos2y	= obj2.pos.y + offsets[i][1];
-
-		// 	var dst = Math.hypot(pos1x-pos2x, pos1y-pos2y);
-		// 	if(dst < rad1+rad2)
-		// 		return true;
-		// }
-
-		// return false;
-
 		return dist(obj1, obj2) < rad1+rad2;
 	}
 	var checkGroupCollision = function(gr1, gr2)
@@ -130,7 +126,7 @@ function randfloat(from, to)
 
 	var FPS = 60;
 
-	var fricK = 0.01;
+	var fricK = 0.55;
 	var ship_ang_vel = 1.5*Math.PI;
 	var acc = 400;
 	var shotSpeed = 500;
@@ -138,6 +134,8 @@ function randfloat(from, to)
 	var shipBufferZone = 100;
 	var explLength = 1000;
 	var invulnerabilityInterval = 5000;
+	var minRockSpeed = 10;
+	var maxRockSpeed = 500;
 
 	var DEBUG = false;
 
@@ -185,20 +183,17 @@ function randfloat(from, to)
 		{
 			if(self.rocks.length < maxRocks && self.started && !self.gameOver)
 			{
-				var rock = new Rock(randint(0,6), 1);
+				var rock = new Rock(randint(0,6));
+
 				rock.setPos(randint(0, gameSize.width), randint(0, gameSize.height));
-				var velx = randfloat(-0.5*self.score-10, 0.5*self.score+10);
-				var vely = randfloat(-0.5*self.score-10, 0.5*self.score+10);
-				if(Math.hypot(velx, vely) > 400)
-				{
-					var vel = Math.hypot(velx, vely);
-					var c = 400 / vel;
-					velx = velx * c;
-					vely = vely * c;
-				}
-				rock.setVelocity(velx, vely);
-				rock.setAngularVelocity(randfloat(-Math.PI, Math.PI));
+
+				var angle = randfloat(0, 2*Math.PI);
+				var vel = constrain(randfloat(0, 0.5*self.score+10), minRockSpeed, maxRockSpeed);
+				rock.setVelocity(vel*Math.cos(angle), vel*Math.sin(angle));
+
 				rock.setAngle(randfloat(-Math.PI, Math.PI));
+				rock.setAngularVelocity(randfloat(-Math.PI, Math.PI));
+
 				var scale = 0.8 - self.score*0.0005;
 				scale = randfloat(scale-0.2, scale+0.2);
 				if(scale < 0.3)
@@ -338,7 +333,7 @@ function randfloat(from, to)
 					rock = this.rocks[ind];
 					this.rocks.splice(ind, 1);
 
-					explosion = new Explosion(randint(0, 4), 1, explLength);
+					explosion = new Explosion(randint(0, 4), explLength);
 					explosion.setPos(rock.pos.x, rock.pos.y);
 					explosion.setVelocity(rock.velocity.x, rock.velocity.y);
 					explosion.setAngle(Math.atan2(-rock.velocity.y, rock.velocity.x) + 0.5*Math.PI);
@@ -353,49 +348,49 @@ function randfloat(from, to)
 				this.score += 10*toDelRocks.length;
 
 				// Check rock-ship collisions
-				var toDelete = checkGroupCollision([this.ship], this.rocks);
-				var toDelShip = toDelete[0];
-				var toDelRocks = toDelete[1];
-
-				var i = toDelRocks.length;
-				while(i--)
+				if(this.ship.isOnCanvas)
 				{
-					ind = toDelRocks[i];
-					rock = this.rocks[ind];
-					this.rocks.splice(ind, 1);
+					var toDelete = checkGroupCollision([this.ship], this.rocks);
+					var toDelShip = toDelete[0];
+					var toDelRocks = toDelete[1];
 
-					explosion = new Explosion(randint(0, 4), 1, explLength);
-					explosion.setPos(rock.pos.x, rock.pos.y);
-					explosion.setVelocity(rock.velocity.x, rock.velocity.y);
-					explosion.setAngle(Math.atan2(-rock.velocity.y, rock.velocity.x) + 0.5*Math.PI);
-					explosion.matchRock(rock.sprite.radius);
-					explosion.explode();
-
-					this.explosions.push(explosion);
-				}
-
-				if(toDelShip.length > 0 && !this.ship.invulnerable)
-				{
-					this.lives--;
-
-					explosion = new Explosion(5, 1, explLength);
-					explosion.setPos(this.ship.pos.x, this.ship.pos.y);
-					explosion.setVelocity(this.ship.velocity.x, this.ship.velocity.y);
-					explosion.setAngle(Math.atan2(-this.ship.velocity.y, this.ship.velocity.x) + 0.5*Math.PI);
-					explosion.matchRock(2*this.ship.sprite.radius);
-					explosion.explode();
-
-					this.explosions.push(explosion);
-
-					this.ship.setPos(gameSize.width/2, gameSize.height/2);
-					this.ship.setAngle(Math.PI / 2);
-					this.ship.setVelocity(0, 0);
-					this.ship.setInvulnerabilityFor(invulnerabilityInterval);
-
-					if(this.lives <= 0)
+					var i = toDelRocks.length;
+					while(i--)
 					{
-						this.gameOver = true;
-						this.rocks = [];
+						ind = toDelRocks[i];
+						rock = this.rocks[ind];
+						this.rocks.splice(ind, 1);
+
+						explosion = new Explosion(randint(0, 4), explLength);
+						explosion.setPos(rock.pos.x, rock.pos.y);
+						explosion.setVelocity(rock.velocity.x, rock.velocity.y);
+						explosion.setAngle(Math.atan2(-rock.velocity.y, rock.velocity.x) + 0.5*Math.PI);
+						explosion.matchRock(rock.sprite.radius);
+						explosion.explode();
+
+						this.explosions.push(explosion);
+					}
+
+					if(toDelShip.length > 0 && !this.ship.invulnerable)
+					{
+						this.lives--;
+
+						explosion = new Explosion(5, explLength);
+						explosion.setPos(this.ship.pos.x, this.ship.pos.y);
+						explosion.setVelocity(this.ship.velocity.x, this.ship.velocity.y);
+						explosion.setAngle(Math.atan2(-this.ship.velocity.y, this.ship.velocity.x) + 0.5*Math.PI);
+						explosion.matchRock(2*this.ship.sprite.radius);
+						explosion.explode();
+
+						this.explosions.push(explosion);
+
+						this.ship.reset(2000);
+
+						if(this.lives <= 0)
+						{
+							this.gameOver = true;
+							this.rocks = [];
+						}
 					}
 				}
 			}
@@ -461,6 +456,11 @@ function randfloat(from, to)
 				{
 					ctx.fillStyle = '#FF0000';
 					ctx.fillText("Debug mode", 10, 90);
+				}
+
+				if(this.ship.invulnerable)
+				{
+					ctx.drawImage(entityImages.SHIELD_ICON[0], gameSize.width - 80, 10);
 				}
 			}
 		}
@@ -561,6 +561,8 @@ function randfloat(from, to)
 
 		this.timerId = -1;
 		this.animEnded = false;
+
+		this.alpha = 1;
 	}
 
 	Sprite.prototype =
@@ -573,6 +575,7 @@ function randfloat(from, to)
 
 				ctx.translate(this.obj.pos.x + offsets[i][0], this.obj.pos.y + offsets[i][1]);
 				ctx.rotate(-this.obj.angle);
+				ctx.globalAlpha = this.alpha;
 
 				var col = this.curFrame % this.cols;
 				var row = ~~(this.curFrame / this.cols); // integer division
@@ -613,6 +616,24 @@ function randfloat(from, to)
 			this.timerId = setInterval(nextFrame, dt);
 		},
 
+		fadeAwayFor: function(period)
+		{
+			var self = this;
+			var steps = 100;
+			var delta = 1/steps;
+			var nextStep = function()
+			{
+				self.alpha -= delta;
+				if(self.alpha <= 0)
+				{
+					clearInterval(self.timerId);
+				}
+			}
+
+			this.alpha = 1;
+			this.timerId = setInterval(nextStep, period / steps);
+		},
+
 		setScale: function(scale)
 		{
 			this.scale = scale;
@@ -627,6 +648,11 @@ function randfloat(from, to)
 		calcRadius: function()
 		{
 			this.radius = this.frameSize.width / 2 * this.scale;
+		},
+
+		setAlpha: function(alpha)
+		{
+			this.alpha = alpha;
 		}
 	}
 
@@ -706,34 +732,35 @@ function randfloat(from, to)
 		this.sprite = new Sprite(this, entityImages.SHIP[0], LayoutType.LINEAR, 2, 2);
 		this.sprite.setFrame(0);
 
+		this.shield = new Shield();
+
 		this.thrust = false;
 
 		this.invulnerable = false;
+
+		this.isOnCanvas = true;
 	}
 	Ship.prototype =
 	{
 		draw: function(ctx)
 		{
-			this.super.draw.apply(this, [ctx]);
-			if(this.invulnerable)
+			if(this.isOnCanvas)
 			{
-				for(var i = 0; i<offsets.length; i++)
+				this.super.draw.apply(this, [ctx]);
+				if(this.invulnerable)
 				{
-					ctx.beginPath();
-					ctx.arc(this.pos.x + offsets[i][0], this.pos.y + offsets[i][1], this.sprite.radius, 0, 2*Math.PI);
-					ctx.strokeStyle = "#00FF00";
-					ctx.stroke();
+					this.shield.draw(ctx);
 				}
-			}
 
-			if(DEBUG)
-			{
-				for(var i = 0; i<offsets.length; i++)
+				if(DEBUG)
 				{
-					ctx.beginPath();
-					ctx.arc(this.pos.x + offsets[i][0], this.pos.y + offsets[i][1], this.sprite.radius+shipBufferZone, 0, 2*Math.PI);
-					ctx.strokeStyle = "#FF0000";
-					ctx.stroke();
+					for(var i = 0; i<offsets.length; i++)
+					{
+						ctx.beginPath();
+						ctx.arc(this.pos.x + offsets[i][0], this.pos.y + offsets[i][1], this.sprite.radius+shipBufferZone, 0, 2*Math.PI);
+						ctx.strokeStyle = "#FF0000";
+						ctx.stroke();
+					}
 				}
 			}
 		},
@@ -745,8 +772,10 @@ function randfloat(from, to)
 				this.velocity.x += acc * Math.cos(this.angle) * dt / 1000;
 				this.velocity.y -= acc * Math.sin(this.angle) * dt / 1000;
 			}
-			this.velocity.x *= (1-fricK);
-			this.velocity.y *= (1-fricK);
+			this.velocity.x *= (1-fricK * dt / 1000);
+			this.velocity.y *= (1-fricK * dt / 1000);
+
+			this.shield.update(dt);
 
 			this.super.update.apply(this, [dt]);
 		},
@@ -761,14 +790,46 @@ function randfloat(from, to)
 		{
 			var self = this;
 			this.invulnerable = true;
+			this.shield.pos = this.pos;
+			this.shield.setAngularVelocity(Math.PI);
+			this.shield.sprite.fadeAwayFor(timeout);
+
 			var onTimeoutEnd = function()
 			{
 				self.invulnerable = false;
 			}
 			setTimeout(onTimeoutEnd, timeout);
+		},
+
+		reset: function(timeout)
+		{
+			this.isOnCanvas = false;
+			var self = this;
+			var showShip = function()
+			{
+				self.setPos(gameSize.width/2, gameSize.height/2);
+				self.setAngle(Math.PI / 2);
+				self.setVelocity(0, 0);
+				self.setInvulnerabilityFor(invulnerabilityInterval);
+				self.isOnCanvas = true;
+			}
+			setTimeout(showShip, timeout);
 		}
 	}
 	inherit_B(Ship, Entity);
+
+	// ================================================================================================================Shield================================================================================================================
+	var Shield = function()
+	{
+		Entity.call(this);
+		this.sprite = new Sprite(this, entityImages.SHIELD[0], LayoutType.LINEAR, 1, 1);
+		this.sprite.setFrame(0);
+	}
+	Shield.prototype =
+	{
+		
+	}
+	inherit_B(Shield, Entity);
 
 	// ================================================================================================================Shot================================================================================================================
 	var Shot = function(type)
@@ -794,12 +855,10 @@ function randfloat(from, to)
 	inherit_B(Shot, Entity);
 
 	// ================================================================================================================Rock================================================================================================================
-	var Rock = function(type, size)
+	var Rock = function(type)
 	{
 		Entity.call(this);
 		this.sprite = new Sprite(this, entityImages.ROCK[type], LayoutType.LINEAR, 1, 1);
-
-		this.size = size;
 	}
 	Rock.prototype =
 	{
@@ -811,12 +870,11 @@ function randfloat(from, to)
 	inherit_B(Rock, Entity);
 
 	// ================================================================================================================Explosion================================================================================================================
-	var Explosion = function(type, size, animLength)
+	var Explosion = function(type, animLength)
 	{
 		Entity.call(this);
 		this.sprite = new Sprite(this, entityImages.EXPLOSION[type], LayoutType.GRID, 64, 8);
 
-		this.size = size;
 		this.animLength = animLength;
 	}
 	Explosion.prototype =
