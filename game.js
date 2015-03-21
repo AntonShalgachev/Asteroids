@@ -57,7 +57,7 @@ function constrain(val, from, to)
 		SHIP			: ["res\\img\\ship.png"],
 		SHOT			: ["res\\img\\shot0.png", "res\\img\\shot1.png", "res\\img\\shot2.png"],
 		ROCK			: ["res\\img\\rock0.png", "res\\img\\rock1.png", "res\\img\\rock2.png", "res\\img\\rock3.png", "res\\img\\rock4.png", "res\\img\\rock5.png", "res\\img\\rock6.png"],
-		BACKGROUND		: ["res\\img\\background0.png", "res\\img\\background1.png"],
+		BACKGROUND		: ["res\\img\\background0.png", "res\\img\\background1.png", "res\\img\\background2.png", "res\\img\\background3.png", "res\\img\\background4.png", "res\\img\\background5.png"],
 		DEBRIS			: ["res\\img\\debris0.png", "res\\img\\debris1.png"],
 		EXPLOSION		: ["res\\anim\\explosion0.png", "res\\anim\\explosion1.png", "res\\anim\\explosion2.png", "res\\anim\\explosion3.png", "res\\anim\\explosion4.png", "res\\anim\\explosion5.png"],
 		SHIELD			: ["res\\img\\shield0.png", "res\\img\\shield1.png"],
@@ -65,6 +65,18 @@ function constrain(val, from, to)
 	};
 
 	var entityImages = {};
+
+	var sndFiles =
+	{
+		SHOT			: ["res\\snd\\shot0.mp3", "res\\snd\\shot1.mp3"],
+		EXPLOSION		: ["res\\snd\\explosion0.mp3", "res\\snd\\explosion1.mp3", "res\\snd\\explosion2.mp3", "res\\snd\\explosion3.mp3"],
+		SHIP_EXPLOSION	: ["res\\snd\\shipExplosion.mp3"],
+		THRUST_ON		: ["res\\snd\\thrustOn.mp3"],
+		THRUST_OFF		: ["res\\snd\\thrustOff.mp3"],
+		SOUNDTRACK		: ["res\\snd\\soundtrack.mp3"]
+	};
+
+	var sndAudio = {};
 
 	var offsets =	[
 						[0, 0],
@@ -124,20 +136,20 @@ function constrain(val, from, to)
 		return [col1, col2]
 	}
 
-	var FPS = 60;
-
 	var fricK = 0.55;
 	var ship_ang_vel = 1.5*Math.PI;
 	var acc = 400;
 	var shotSpeed = 500;
-	var maxRocks = 10;
+	var maxRocks = 5;
 	var shipBufferZone = 100;
 	var explLength = 1000;
 	var invulnerabilityInterval = 5000;
 	var minRockSpeed = 50;
 	var maxRockSpeed = 250;
+	var FPSUpdatePeriod = 250;
+	var clones = 10;
 
-	var DEBUG = false;
+	var DEBUG = true;
 
 	// ================================================================================================================Game================================================================================================================
 	var Game = function(canvasId)
@@ -155,9 +167,13 @@ function constrain(val, from, to)
 
 		this.started = false;
 		this.resLoaded = false;
+		this.sndLoaded = false;
+		this.imgLoaded = false;
 
-		this.onResLoaded = function()
+		this.allResLoaded = function()
 		{
+			console.log('All resources are loaded');
+
 			self.resLoaded = true;
 			self.keyboarder.attachOnkeydown(self.keyboarder.KEY.ENTER, Start);
 
@@ -166,9 +182,37 @@ function constrain(val, from, to)
 			self.ship.setAngle(Math.PI / 2);
 		}
 
+		this.onImgLoaded = function()
+		{
+			console.log('img loaded');
+
+			self.imgLoaded = true;
+
+			if(self.sndLoaded)
+				self.allResLoaded();
+		}
+
+		this.onSndLoaded = function()
+		{
+			console.log('snd loaded');
+
+			self.sndLoaded = true;
+
+			if(self.imgLoaded)
+				self.allResLoaded();
+		}
+
 		// Create and init resourses
-		var preloader = new Preloader(this.onResLoaded);
+		var preloader = new ImagePreloader(entityFiles, entityImages, this.onImgLoaded);
 		preloader.preload();
+
+		var snd_preloader = new SoundPreloader(sndFiles, sndAudio, this.onSndLoaded);
+		snd_preloader.preload();
+
+		this.player = new SndPlayer(sndAudio);
+		this.player.setVolume("SHIP_EXPLOSION", 0, 1);
+		this.player.setVolume("THRUST_ON", 0, 1);
+		this.player.setVolume("THRUST_OFF", 0, 1);
 
 		this.ship;
 
@@ -178,6 +222,8 @@ function constrain(val, from, to)
 
 		this.debrisPos = [0, 0];
 		this.debrisVel = [100, -50];
+
+		this.backgroundId = randint(0, 5);
 
 		var spawnRock = function()
 		{
@@ -205,30 +251,52 @@ function constrain(val, from, to)
 			}
 		}
 
+		this.prevTickTime = Date.now();
+		this.realFPS = 0;
 		var tick = function()
 		{
-			self.update();
+			var now = Date.now();
+			var dt = now - self.prevTickTime;
+			self.prevTickTime = now;
+
+			if(self.updateFPS)
+			{
+				self.realFPS = 1000 / dt;
+
+				self.updateFPS = false;
+			}
+
+			self.update(dt);
 			self.draw(ctx);
+			requestAnimationFrame(tick);
 		};
 
-
+		self.updateFPS = false;
+		var nextFPS = function()
+		{
+			self.updateFPS = true;
+		}
+		setInterval(nextFPS, FPSUpdatePeriod);
 
 		var ThrustOn = function()
 		{
-				self.ship.setThrust(true);
+			self.ship.setThrust(true);
+			self.player.play("THRUST_ON", 0, false);
 		};
 		var ThrustOff = function()
 		{
-				self.ship.setThrust(false);
+			self.ship.setThrust(false);
+			self.player.stop("THRUST_ON");
+			self.player.play("THRUST_OFF", 0, false);
 		};
 
 		var TurnLeft = function()
 		{
-				self.ship.ang_vel += ship_ang_vel;
+			self.ship.ang_vel += ship_ang_vel;
 		};
 		var TurnRight = function()
 		{
-				self.ship.ang_vel -= ship_ang_vel;
+			self.ship.ang_vel -= ship_ang_vel;
 		};
 
 		var Shoot = function()
@@ -241,6 +309,8 @@ function constrain(val, from, to)
 				shot.setPos(self.ship.pos.x + self.ship.sprite.radius * Math.cos(self.ship.angle), self.ship.pos.y - self.ship.sprite.radius * Math.sin(self.ship.angle));
 				shot.setAngle(self.ship.angle);
 				self.shots.push(shot);
+
+				self.player.play("SHOT", randint(0, 1), false);
 			}
 		};
 
@@ -263,22 +333,24 @@ function constrain(val, from, to)
 				self.keyboarder.attachOnkeyup(self.keyboarder.KEY.D, TurnLeft);
 
 				self.keyboarder.attachOnkeydown(self.keyboarder.KEY.SPACE, Shoot);
+
+				self.player.play("SOUNDTRACK", 0, true);
 			}
 		}
 
 
 
-		setInterval(tick, 1000 / FPS);
+		//setInterval(tick, 1000 / FPS);
+		tick();
 		setInterval(spawnRock, 1000);
 	};
 
 	Game.prototype =
 	{
-		update: function()
+		update: function(dt)
 		{
 			if(this.resLoaded)
 			{
-				dt = 1000/FPS;
 
 				this.debrisPos[0] += this.debrisVel[0] * dt / 1000;
 				this.debrisPos[1] += this.debrisVel[1] * dt / 1000;
@@ -326,17 +398,30 @@ function constrain(val, from, to)
 				var i = toDelShots.length;
 				while(i--)
 				{
-					ind = toDelShots[i];
+					var ind = toDelShots[i];
 					this.shots.splice(ind, 1);
 				}
 				var i = toDelRocks.length;
 				while(i--)
 				{
-					ind = toDelRocks[i];
-					rock = this.rocks[ind];
+					var ind = toDelRocks[i];
+					var rock = this.rocks[ind];
 					this.rocks.splice(ind, 1);
 
-					explosion = new Explosion(randint(0, 4), explLength);
+					if(rock === undefined)
+					{
+						console.log('Shit is about to happen');
+
+						console.log('ind=' + ind);
+
+						console.log('toDelRocks:');
+						console.log(toDelRocks);
+
+						console.log('this.rocks:');
+						console.log(this.rocks);
+					}
+
+					var explosion = new Explosion(randint(0, 4), explLength);
 					explosion.setPos(rock.pos.x, rock.pos.y);
 					explosion.setVelocity(rock.velocity.x, rock.velocity.y);
 					explosion.setAngle(Math.atan2(-rock.velocity.y, rock.velocity.x) + 0.5*Math.PI);
@@ -344,6 +429,8 @@ function constrain(val, from, to)
 					explosion.explode();
 
 					this.explosions.push(explosion);
+
+					this.player.play("EXPLOSION", randint(0,3), false);
 
 					if(rock.sprite.scale > 0.5)
 					{
@@ -372,7 +459,7 @@ function constrain(val, from, to)
 					}
 				}
 
-				this.score += 10*toDelRocks.length;
+				this.score += 5*toDelRocks.length;
 
 				// Check rock-ship collisions
 				if(this.ship.isOnCanvas)
@@ -396,6 +483,8 @@ function constrain(val, from, to)
 						explosion.explode();
 
 						this.explosions.push(explosion);
+						if(this.ship.invulnerable)
+							this.player.play("EXPLOSION", randint(0,3), false);
 					}
 
 					if(toDelShip.length > 0 && !this.ship.invulnerable)
@@ -410,6 +499,8 @@ function constrain(val, from, to)
 						explosion.explode();
 
 						this.explosions.push(explosion);
+
+						this.player.play("SHIP_EXPLOSION", 0, false);
 
 						this.ship.reset(2000);
 
@@ -435,14 +526,14 @@ function constrain(val, from, to)
 
 			else if(!this.started)
 			{
-				ctx.drawImage(entityImages.BACKGROUND[1], 0, 0);
+				ctx.drawImage(entityImages.BACKGROUND[this.backgroundId], 0, 0);
 				ctx.font="20px Georgia"
 				ctx.fillStyle = '#FFFFFF';
 				ctx.fillText("Press Enter to begin the enthralling unforgettable journey into my WTFcode.", 10, 30);
 			}
 			else
 			{
-				ctx.drawImage(entityImages.BACKGROUND[1], 0, 0);
+				ctx.drawImage(entityImages.BACKGROUND[this.backgroundId], 0, 0);
 
 				var i = debrisOffsets.length;
 				while(i--)
@@ -487,18 +578,25 @@ function constrain(val, from, to)
 
 				if(this.ship.invulnerable)
 				{
-					ctx.drawImage(entityImages.SHIELD_ICON[0], gameSize.width - 80, 10);
+					ctx.drawImage(entityImages.SHIELD_ICON[0], 10, 100);
 				}
+
+				ctx.fillStyle = '#FFFF00';
+				ctx.font = '30pt Calibri';
+				ctx.fillText(Math.round(this.realFPS), gameSize.width - 70, 50);
 			}
 		}
 	};
 
-	// ================================================================================================================Preloader================================================================================================================
-	var Preloader = function(onLoadedCallback)
+	// ================================================================================================================ImagePreloader================================================================================================================
+	var ImagePreloader = function(input, output, onLoadedCallback)
 	{
 		this.numberImages = 0;
 		this.numberLoaded = 0;
 		this.onLoadedCallback = onLoadedCallback;
+
+		this.input = input;
+		this.output = output;
 
 		var self = this;
 
@@ -509,25 +607,25 @@ function constrain(val, from, to)
 				self.onLoadedCallback();
 		}
 	}
-	Preloader.prototype =
+	ImagePreloader.prototype =
 	{
 		preload: function()
 		{
-			for(var key in entityFiles)
+			for(var key in this.input)
 			{
-				this.numberImages += entityFiles[key].length;
+				this.numberImages += this.input[key].length;
 
-				entityImages[key] = [];
+				this.output[key] = [];
 
-				for(var i = 0; i<entityFiles[key].length; i++)
+				for(var i = 0; i<this.input[key].length; i++)
 				{
-					var filename = entityFiles[key][i];
+					var filename = this.input[key][i];
 
 					var img = new Image();
 					img.onload = this.onLoaded;
 					img.src = filename;
 
-					entityImages[key].push(img);
+					this.output[key].push(img);
 				}
 			}
 		},
@@ -535,6 +633,134 @@ function constrain(val, from, to)
 		allLoaded: function()
 		{
 			return (this.numberImages != 0) && (this.numberImages == this.numberLoaded);
+		}
+	}
+
+	// ================================================================================================================SoundPreloader================================================================================================================
+	var SoundPreloader = function(input, output, onLoadedCallback)
+	{
+		this.numberImages = 0;
+		this.numberLoaded = 0;
+		this.onLoadedCallback = onLoadedCallback;
+
+		this.input = input;
+		this.output = output;
+
+		var self = this;
+
+		this.oncanplaythrough = function()
+		{
+			self.numberLoaded++;
+			if(self.allLoaded())
+				self.onLoadedCallback();
+		}
+	}
+	SoundPreloader.prototype =
+	{
+		preload: function()
+		{
+			for(var key in this.input)
+			{
+				this.numberImages += this.input[key].length;
+
+				this.output[key] = [];
+
+				for(var i = 0; i<this.input[key].length; i++)
+				{
+					var filename = this.input[key][i];
+
+					var snd = new Audio();
+					snd.oncanplaythrough = this.oncanplaythrough;
+					snd.src = filename;
+					snd.volume = 0.5;
+
+					this.output[key].push(snd);
+				}
+			}
+		},
+
+		allLoaded: function()
+		{
+			return (this.numberImages != 0) && (this.numberImages == this.numberLoaded);
+		}
+	}
+
+	// ================================================================================================================SndPlayer================================================================================================================
+	var SndPlayer = function(sndArray)
+	{
+		this.sounds = {};
+		this.free = {};
+
+		for(var key in sndArray)
+		{
+			this.sounds[key] = [];
+			this.free[key] = [];
+
+			for(var i = 0; i<sndArray[key].length; i++)
+			{
+				this.sounds[key].push([]);
+				this.free[key].push([]);
+
+				var snd = sndArray[key][i];
+				for(var j = 0; j < clones; j++)
+				{
+					this.sounds[key][i].push(snd.cloneNode());
+					this.sounds[key][i][j].volume = 0.5;
+					this.free[key][i].push(true);
+				}
+			}
+		}
+
+		console.log(this.sounds);
+	}
+	SndPlayer.prototype =
+	{
+		play: function(key, ind, looped)
+		{
+			//var sounds = this.sounds[key][ind];
+
+			for(var i = 0; i<this.free[key][ind].length; i++)
+			{
+				if(this.free[key][ind][i])
+				{
+					var self = this;
+					var freeSound = function()
+					{
+						if(looped)
+						{
+							self.sounds[key][ind][i].currentTime = 0;
+							self.sounds[key][ind][i].play();
+						}
+						else
+							self.free[key][ind][i] = true;
+					}
+					this.sounds[key][ind][i].play();
+					this.sounds[key][ind][i].onended = freeSound;
+
+					this.free[key][ind][i] = false;
+
+					break;
+				}
+			}
+		},
+
+		stop: function(key)
+		{
+			for(var ind = 0; ind < this.sounds[key].length; ind++)
+			{
+				for(var i = 0; i<clones; i++)
+				{
+					this.sounds[key][ind][i].pause();
+					this.sounds[key][ind][i].currentTime = 0;
+					this.free[key][ind][i] = true;
+				}
+			}
+		},
+
+		setVolume: function(key, ind, vol)
+		{
+			for(var i = 0; i<clones; i++)
+				this.sounds[key][ind][i].volume = vol;
 		}
 	}
 
