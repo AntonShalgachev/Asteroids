@@ -134,8 +134,8 @@ function constrain(val, from, to)
 	var shipBufferZone = 100;
 	var explLength = 1000;
 	var invulnerabilityInterval = 5000;
-	var minRockSpeed = 10;
-	var maxRockSpeed = 500;
+	var minRockSpeed = 50;
+	var maxRockSpeed = 250;
 
 	var DEBUG = false;
 
@@ -195,9 +195,9 @@ function constrain(val, from, to)
 				rock.setAngularVelocity(randfloat(-Math.PI, Math.PI));
 
 				var scale = 0.8 - self.score*0.0005;
-				scale = randfloat(scale-0.2, scale+0.2);
-				if(scale < 0.3)
-					scale = 0.3;
+				scale = randfloat(scale-0.4, scale+0.4);
+				if(scale < 0.6)
+					scale = 0.6;
 				rock.setScale(scale);
 
 				if(dist(self.ship, rock) > self.ship.sprite.radius + rock.sprite.radius + shipBufferZone)
@@ -233,12 +233,15 @@ function constrain(val, from, to)
 
 		var Shoot = function()
 		{
-			var shot = new Shot(2);
+			if(self.ship.isOnCanvas)
+			{
+				var shot = new Shot(2);
 
-			shot.setVelocity(self.ship.velocity.x + shotSpeed * Math.cos(self.ship.angle), self.ship.velocity.y - shotSpeed * Math.sin(self.ship.angle));
-			shot.setPos(self.ship.pos.x + self.ship.sprite.radius * Math.cos(self.ship.angle), self.ship.pos.y - self.ship.sprite.radius * Math.sin(self.ship.angle));
-			shot.setAngle(self.ship.angle);
-			self.shots.push(shot);
+				shot.setVelocity(self.ship.velocity.x + shotSpeed * Math.cos(self.ship.angle), self.ship.velocity.y - shotSpeed * Math.sin(self.ship.angle));
+				shot.setPos(self.ship.pos.x + self.ship.sprite.radius * Math.cos(self.ship.angle), self.ship.pos.y - self.ship.sprite.radius * Math.sin(self.ship.angle));
+				shot.setAngle(self.ship.angle);
+				self.shots.push(shot);
+			}
 		};
 
 		var Start = function()
@@ -342,7 +345,31 @@ function constrain(val, from, to)
 
 					this.explosions.push(explosion);
 
-					//smallRock1 = new Rock();
+					if(rock.sprite.scale > 0.5)
+					{
+						rock1 = new Rock(rock.type);
+						rock2 = new Rock(rock.type);
+
+						rock1.setScale(0.6*rock.sprite.scale);
+						rock2.setScale(0.6*rock.sprite.scale);
+
+						rock1.setPos(rock.pos.x, rock.pos.y);
+						rock2.setPos(rock.pos.x, rock.pos.y);
+
+						var vel = Math.hypot(rock.velocity.x, rock.velocity.y);
+						var angle = Math.atan2(rock.velocity.y, rock.velocity.x);
+
+						dAngle = randfloat(Math.PI/12, Math.PI/3);
+
+						rock1.setVelocity(vel*Math.cos(angle + dAngle), vel*Math.sin(angle + dAngle));
+						rock2.setVelocity(vel*Math.cos(angle - dAngle), vel*Math.sin(angle - dAngle));
+
+						rock1.setAngularVelocity(rock.ang_vel);
+						rock2.setAngularVelocity(-rock.ang_vel);
+
+						this.rocks.push(rock1);
+						this.rocks.push(rock2);
+					}
 				}
 
 				this.score += 10*toDelRocks.length;
@@ -859,6 +886,7 @@ function constrain(val, from, to)
 	{
 		Entity.call(this);
 		this.sprite = new Sprite(this, entityImages.ROCK[type], LayoutType.LINEAR, 1, 1);
+		this.type = type;
 	}
 	Rock.prototype =
 	{
