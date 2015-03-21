@@ -21,6 +21,16 @@ function randfloat(from, to)
     return Math.random() * (to - from) + from;
 }
 
+function constrain(val, from, to)
+{
+	if(val > to)
+		return to;
+	if(val < from)
+		return from;
+
+	return val;
+}
+
 (function()
 {
 	var SpriteType =
@@ -47,12 +57,26 @@ function randfloat(from, to)
 		SHIP			: ["res\\img\\ship.png"],
 		SHOT			: ["res\\img\\shot0.png", "res\\img\\shot1.png", "res\\img\\shot2.png"],
 		ROCK			: ["res\\img\\rock0.png", "res\\img\\rock1.png", "res\\img\\rock2.png", "res\\img\\rock3.png", "res\\img\\rock4.png", "res\\img\\rock5.png", "res\\img\\rock6.png"],
-		BACKGROUND		: ["res\\img\\background0.png", "res\\img\\background1.png"],
+		BACKGROUND		: ["res\\img\\background0.png", "res\\img\\background1.png", "res\\img\\background2.png", "res\\img\\background3.png", "res\\img\\background4.png", "res\\img\\background5.png"],
 		DEBRIS			: ["res\\img\\debris0.png", "res\\img\\debris1.png"],
-		EXPLOSION		: ["res\\anim\\explosion0.png", "res\\anim\\explosion1.png", "res\\anim\\explosion2.png", "res\\anim\\explosion3.png", "res\\anim\\explosion4.png", "res\\anim\\explosion5.png"]
+		EXPLOSION		: ["res\\anim\\explosion0.png", "res\\anim\\explosion1.png", "res\\anim\\explosion2.png", "res\\anim\\explosion3.png", "res\\anim\\explosion4.png", "res\\anim\\explosion5.png"],
+		SHIELD			: ["res\\img\\shield0.png", "res\\img\\shield1.png"],
+		SHIELD_ICON		: ["res\\img\\shieldIcon.png"]
 	};
 
 	var entityImages = {};
+
+	var sndFiles =
+	{
+		SHOT			: ["res\\snd\\shot0.mp3", "res\\snd\\shot1.mp3"],
+		EXPLOSION		: ["res\\snd\\explosion0.mp3", "res\\snd\\explosion1.mp3", "res\\snd\\explosion2.mp3", "res\\snd\\explosion3.mp3"],
+		SHIP_EXPLOSION	: ["res\\snd\\shipExplosion.mp3"],
+		THRUST_ON		: ["res\\snd\\thrustOn.mp3"],
+		THRUST_OFF		: ["res\\snd\\thrustOff.mp3"],
+		SOUNDTRACK		: ["res\\snd\\soundtrack.mp3"]
+	};
+
+	var sndAudio = {};
 
 	var offsets =	[
 						[0, 0],
@@ -88,22 +112,6 @@ function randfloat(from, to)
 		var rad1	= obj1.sprite.radius;
 		var rad2	= obj2.sprite.radius;
 
-		// var pos1x	= obj1.pos.x;
-		// var pos1y	= obj1.pos.y;
-
-		// var i = offsets.length;
-		// while(i--)
-		// {
-		// 	var pos2x	= obj2.pos.x + offsets[i][0];
-		// 	var pos2y	= obj2.pos.y + offsets[i][1];
-
-		// 	var dst = Math.hypot(pos1x-pos2x, pos1y-pos2y);
-		// 	if(dst < rad1+rad2)
-		// 		return true;
-		// }
-
-		// return false;
-
 		return dist(obj1, obj2) < rad1+rad2;
 	}
 	var checkGroupCollision = function(gr1, gr2)
@@ -128,18 +136,20 @@ function randfloat(from, to)
 		return [col1, col2]
 	}
 
-	var FPS = 60;
-
-	var fricK = 0.01;
+	var fricK = 0.55;
 	var ship_ang_vel = 1.5*Math.PI;
 	var acc = 400;
 	var shotSpeed = 500;
-	var maxRocks = 10;
+	var maxRocks = 5;
 	var shipBufferZone = 100;
 	var explLength = 1000;
 	var invulnerabilityInterval = 5000;
+	var minRockSpeed = 50;
+	var maxRockSpeed = 250;
+	var FPSUpdatePeriod = 250;
+	var clones = 10;
 
-	var DEBUG = false;
+	var DEBUG = true;
 
 	// ================================================================================================================Game================================================================================================================
 	var Game = function(canvasId)
@@ -157,9 +167,13 @@ function randfloat(from, to)
 
 		this.started = false;
 		this.resLoaded = false;
+		this.sndLoaded = false;
+		this.imgLoaded = false;
 
-		this.onResLoaded = function()
+		this.allResLoaded = function()
 		{
+			console.log('All resources are loaded');
+
 			self.resLoaded = true;
 			self.keyboarder.attachOnkeydown(self.keyboarder.KEY.ENTER, Start);
 
@@ -168,9 +182,37 @@ function randfloat(from, to)
 			self.ship.setAngle(Math.PI / 2);
 		}
 
+		this.onImgLoaded = function()
+		{
+			console.log('img loaded');
+
+			self.imgLoaded = true;
+
+			if(self.sndLoaded)
+				self.allResLoaded();
+		}
+
+		this.onSndLoaded = function()
+		{
+			console.log('snd loaded');
+
+			self.sndLoaded = true;
+
+			if(self.imgLoaded)
+				self.allResLoaded();
+		}
+
 		// Create and init resourses
-		var preloader = new Preloader(this.onResLoaded);
+		var preloader = new ImagePreloader(entityFiles, entityImages, this.onImgLoaded);
 		preloader.preload();
+
+		var snd_preloader = new SoundPreloader(sndFiles, sndAudio, this.onSndLoaded);
+		snd_preloader.preload();
+
+		this.player = new SndPlayer(sndAudio);
+		this.player.setVolume("SHIP_EXPLOSION", 0, 1);
+		this.player.setVolume("THRUST_ON", 0, 1);
+		this.player.setVolume("THRUST_OFF", 0, 1);
 
 		this.ship;
 
@@ -181,28 +223,27 @@ function randfloat(from, to)
 		this.debrisPos = [0, 0];
 		this.debrisVel = [100, -50];
 
+		this.backgroundId = randint(0, 5);
+
 		var spawnRock = function()
 		{
 			if(self.rocks.length < maxRocks && self.started && !self.gameOver)
 			{
-				var rock = new Rock(randint(0,6), 1);
+				var rock = new Rock(randint(0,6));
+
 				rock.setPos(randint(0, gameSize.width), randint(0, gameSize.height));
-				var velx = randfloat(-0.5*self.score-10, 0.5*self.score+10);
-				var vely = randfloat(-0.5*self.score-10, 0.5*self.score+10);
-				if(Math.hypot(velx, vely) > 400)
-				{
-					var vel = Math.hypot(velx, vely);
-					var c = 400 / vel;
-					velx = velx * c;
-					vely = vely * c;
-				}
-				rock.setVelocity(velx, vely);
-				rock.setAngularVelocity(randfloat(-Math.PI, Math.PI));
+
+				var angle = randfloat(0, 2*Math.PI);
+				var vel = constrain(randfloat(0, 0.5*self.score+10), minRockSpeed, maxRockSpeed);
+				rock.setVelocity(vel*Math.cos(angle), vel*Math.sin(angle));
+
 				rock.setAngle(randfloat(-Math.PI, Math.PI));
+				rock.setAngularVelocity(randfloat(-Math.PI, Math.PI));
+
 				var scale = 0.8 - self.score*0.0005;
-				scale = randfloat(scale-0.2, scale+0.2);
-				if(scale < 0.3)
-					scale = 0.3;
+				scale = randfloat(scale-0.4, scale+0.4);
+				if(scale < 0.6)
+					scale = 0.6;
 				rock.setScale(scale);
 
 				if(dist(self.ship, rock) > self.ship.sprite.radius + rock.sprite.radius + shipBufferZone)
@@ -210,40 +251,67 @@ function randfloat(from, to)
 			}
 		}
 
+		this.prevTickTime = Date.now();
+		this.realFPS = 0;
 		var tick = function()
 		{
-			self.update();
+			var now = Date.now();
+			var dt = now - self.prevTickTime;
+			self.prevTickTime = now;
+
+			if(self.updateFPS)
+			{
+				self.realFPS = 1000 / dt;
+
+				self.updateFPS = false;
+			}
+
+			self.update(dt);
 			self.draw(ctx);
+			requestAnimationFrame(tick);
 		};
 
-
+		self.updateFPS = false;
+		var nextFPS = function()
+		{
+			self.updateFPS = true;
+		}
+		setInterval(nextFPS, FPSUpdatePeriod);
 
 		var ThrustOn = function()
 		{
-				self.ship.setThrust(true);
+			self.ship.setThrust(true);
+			self.player.play("THRUST_ON", 0, false);
 		};
 		var ThrustOff = function()
 		{
-				self.ship.setThrust(false);
+			self.ship.setThrust(false);
+			self.player.stop("THRUST_ON");
+			self.player.play("THRUST_OFF", 0, false);
 		};
 
 		var TurnLeft = function()
 		{
-				self.ship.ang_vel += ship_ang_vel;
+			self.ship.ang_vel += ship_ang_vel;
 		};
 		var TurnRight = function()
 		{
-				self.ship.ang_vel -= ship_ang_vel;
+			self.ship.ang_vel -= ship_ang_vel;
 		};
 
 		var Shoot = function()
 		{
-			var shot = new Shot(2);
+			if(self.ship.isOnCanvas)
+			{
+				var shot = new Shot(2);
 
-			shot.setVelocity(self.ship.velocity.x + shotSpeed * Math.cos(self.ship.angle), self.ship.velocity.y - shotSpeed * Math.sin(self.ship.angle));
-			shot.setPos(self.ship.pos.x + self.ship.sprite.radius * Math.cos(self.ship.angle), self.ship.pos.y - self.ship.sprite.radius * Math.sin(self.ship.angle));
-			shot.setAngle(self.ship.angle);
-			self.shots.push(shot);
+				shot.setVelocity(self.ship.velocity.x + shotSpeed * Math.cos(self.ship.angle), self.ship.velocity.y - shotSpeed * Math.sin(self.ship.angle));
+				shot.setPos(self.ship.pos.x + self.ship.sprite.radius * Math.cos(self.ship.angle), self.ship.pos.y - self.ship.sprite.radius * Math.sin(self.ship.angle));
+				shot.setAngle(self.ship.angle);
+				self.shots.push(shot);
+
+				self.player.play("SHOT", randint(0, 1), false);
+			}
 		};
 
 		var Start = function()
@@ -265,22 +333,24 @@ function randfloat(from, to)
 				self.keyboarder.attachOnkeyup(self.keyboarder.KEY.D, TurnLeft);
 
 				self.keyboarder.attachOnkeydown(self.keyboarder.KEY.SPACE, Shoot);
+
+				self.player.play("SOUNDTRACK", 0, true);
 			}
 		}
 
 
 
-		setInterval(tick, 1000 / FPS);
+		//setInterval(tick, 1000 / FPS);
+		tick();
 		setInterval(spawnRock, 1000);
 	};
 
 	Game.prototype =
 	{
-		update: function()
+		update: function(dt)
 		{
 			if(this.resLoaded)
 			{
-				dt = 1000/FPS;
 
 				this.debrisPos[0] += this.debrisVel[0] * dt / 1000;
 				this.debrisPos[1] += this.debrisVel[1] * dt / 1000;
@@ -328,17 +398,30 @@ function randfloat(from, to)
 				var i = toDelShots.length;
 				while(i--)
 				{
-					ind = toDelShots[i];
+					var ind = toDelShots[i];
 					this.shots.splice(ind, 1);
 				}
 				var i = toDelRocks.length;
 				while(i--)
 				{
-					ind = toDelRocks[i];
-					rock = this.rocks[ind];
+					var ind = toDelRocks[i];
+					var rock = this.rocks[ind];
 					this.rocks.splice(ind, 1);
 
-					explosion = new Explosion(randint(0, 4), 1, explLength);
+					if(rock === undefined)
+					{
+						console.log('Shit is about to happen');
+
+						console.log('ind=' + ind);
+
+						console.log('toDelRocks:');
+						console.log(toDelRocks);
+
+						console.log('this.rocks:');
+						console.log(this.rocks);
+					}
+
+					var explosion = new Explosion(randint(0, 4), explLength);
 					explosion.setPos(rock.pos.x, rock.pos.y);
 					explosion.setVelocity(rock.velocity.x, rock.velocity.y);
 					explosion.setAngle(Math.atan2(-rock.velocity.y, rock.velocity.x) + 0.5*Math.PI);
@@ -347,55 +430,85 @@ function randfloat(from, to)
 
 					this.explosions.push(explosion);
 
-					//smallRock1 = new Rock();
+					this.player.play("EXPLOSION", randint(0,3), false);
+
+					if(rock.sprite.scale > 0.5)
+					{
+						rock1 = new Rock(rock.type);
+						rock2 = new Rock(rock.type);
+
+						rock1.setScale(0.6*rock.sprite.scale);
+						rock2.setScale(0.6*rock.sprite.scale);
+
+						rock1.setPos(rock.pos.x, rock.pos.y);
+						rock2.setPos(rock.pos.x, rock.pos.y);
+
+						var vel = Math.hypot(rock.velocity.x, rock.velocity.y);
+						var angle = Math.atan2(rock.velocity.y, rock.velocity.x);
+
+						dAngle = randfloat(Math.PI/12, Math.PI/3);
+
+						rock1.setVelocity(vel*Math.cos(angle + dAngle), vel*Math.sin(angle + dAngle));
+						rock2.setVelocity(vel*Math.cos(angle - dAngle), vel*Math.sin(angle - dAngle));
+
+						rock1.setAngularVelocity(rock.ang_vel);
+						rock2.setAngularVelocity(-rock.ang_vel);
+
+						this.rocks.push(rock1);
+						this.rocks.push(rock2);
+					}
 				}
 
-				this.score += 10*toDelRocks.length;
+				this.score += 5*toDelRocks.length;
 
 				// Check rock-ship collisions
-				var toDelete = checkGroupCollision([this.ship], this.rocks);
-				var toDelShip = toDelete[0];
-				var toDelRocks = toDelete[1];
-
-				var i = toDelRocks.length;
-				while(i--)
+				if(this.ship.isOnCanvas)
 				{
-					ind = toDelRocks[i];
-					rock = this.rocks[ind];
-					this.rocks.splice(ind, 1);
+					var toDelete = checkGroupCollision([this.ship], this.rocks);
+					var toDelShip = toDelete[0];
+					var toDelRocks = toDelete[1];
 
-					explosion = new Explosion(randint(0, 4), 1, explLength);
-					explosion.setPos(rock.pos.x, rock.pos.y);
-					explosion.setVelocity(rock.velocity.x, rock.velocity.y);
-					explosion.setAngle(Math.atan2(-rock.velocity.y, rock.velocity.x) + 0.5*Math.PI);
-					explosion.matchRock(rock.sprite.radius);
-					explosion.explode();
-
-					this.explosions.push(explosion);
-				}
-
-				if(toDelShip.length > 0 && !this.ship.invulnerable)
-				{
-					this.lives--;
-
-					explosion = new Explosion(5, 1, explLength);
-					explosion.setPos(this.ship.pos.x, this.ship.pos.y);
-					explosion.setVelocity(this.ship.velocity.x, this.ship.velocity.y);
-					explosion.setAngle(Math.atan2(-this.ship.velocity.y, this.ship.velocity.x) + 0.5*Math.PI);
-					explosion.matchRock(2*this.ship.sprite.radius);
-					explosion.explode();
-
-					this.explosions.push(explosion);
-
-					this.ship.setPos(gameSize.width/2, gameSize.height/2);
-					this.ship.setAngle(Math.PI / 2);
-					this.ship.setVelocity(0, 0);
-					this.ship.setInvulnerabilityFor(invulnerabilityInterval);
-
-					if(this.lives <= 0)
+					var i = toDelRocks.length;
+					while(i--)
 					{
-						this.gameOver = true;
-						this.rocks = [];
+						ind = toDelRocks[i];
+						rock = this.rocks[ind];
+						this.rocks.splice(ind, 1);
+
+						explosion = new Explosion(randint(0, 4), explLength);
+						explosion.setPos(rock.pos.x, rock.pos.y);
+						explosion.setVelocity(rock.velocity.x, rock.velocity.y);
+						explosion.setAngle(Math.atan2(-rock.velocity.y, rock.velocity.x) + 0.5*Math.PI);
+						explosion.matchRock(rock.sprite.radius);
+						explosion.explode();
+
+						this.explosions.push(explosion);
+						if(this.ship.invulnerable)
+							this.player.play("EXPLOSION", randint(0,3), false);
+					}
+
+					if(toDelShip.length > 0 && !this.ship.invulnerable)
+					{
+						this.lives--;
+
+						explosion = new Explosion(5, explLength);
+						explosion.setPos(this.ship.pos.x, this.ship.pos.y);
+						explosion.setVelocity(this.ship.velocity.x, this.ship.velocity.y);
+						explosion.setAngle(Math.atan2(-this.ship.velocity.y, this.ship.velocity.x) + 0.5*Math.PI);
+						explosion.matchRock(2*this.ship.sprite.radius);
+						explosion.explode();
+
+						this.explosions.push(explosion);
+
+						this.player.play("SHIP_EXPLOSION", 0, false);
+
+						this.ship.reset(2000);
+
+						if(this.lives <= 0)
+						{
+							this.gameOver = true;
+							this.rocks = [];
+						}
 					}
 				}
 			}
@@ -413,14 +526,14 @@ function randfloat(from, to)
 
 			else if(!this.started)
 			{
-				ctx.drawImage(entityImages.BACKGROUND[1], 0, 0);
+				ctx.drawImage(entityImages.BACKGROUND[this.backgroundId], 0, 0);
 				ctx.font="20px Georgia"
 				ctx.fillStyle = '#FFFFFF';
 				ctx.fillText("Press Enter to begin the enthralling unforgettable journey into my WTFcode.", 10, 30);
 			}
 			else
 			{
-				ctx.drawImage(entityImages.BACKGROUND[1], 0, 0);
+				ctx.drawImage(entityImages.BACKGROUND[this.backgroundId], 0, 0);
 
 				var i = debrisOffsets.length;
 				while(i--)
@@ -462,16 +575,28 @@ function randfloat(from, to)
 					ctx.fillStyle = '#FF0000';
 					ctx.fillText("Debug mode", 10, 90);
 				}
+
+				if(this.ship.invulnerable)
+				{
+					ctx.drawImage(entityImages.SHIELD_ICON[0], 10, 100);
+				}
+
+				ctx.fillStyle = '#FFFF00';
+				ctx.font = '30pt Calibri';
+				ctx.fillText(Math.round(this.realFPS), gameSize.width - 70, 50);
 			}
 		}
 	};
 
-	// ================================================================================================================Preloader================================================================================================================
-	var Preloader = function(onLoadedCallback)
+	// ================================================================================================================ImagePreloader================================================================================================================
+	var ImagePreloader = function(input, output, onLoadedCallback)
 	{
 		this.numberImages = 0;
 		this.numberLoaded = 0;
 		this.onLoadedCallback = onLoadedCallback;
+
+		this.input = input;
+		this.output = output;
 
 		var self = this;
 
@@ -482,25 +607,25 @@ function randfloat(from, to)
 				self.onLoadedCallback();
 		}
 	}
-	Preloader.prototype =
+	ImagePreloader.prototype =
 	{
 		preload: function()
 		{
-			for(var key in entityFiles)
+			for(var key in this.input)
 			{
-				this.numberImages += entityFiles[key].length;
+				this.numberImages += this.input[key].length;
 
-				entityImages[key] = [];
+				this.output[key] = [];
 
-				for(var i = 0; i<entityFiles[key].length; i++)
+				for(var i = 0; i<this.input[key].length; i++)
 				{
-					var filename = entityFiles[key][i];
+					var filename = this.input[key][i];
 
 					var img = new Image();
 					img.onload = this.onLoaded;
 					img.src = filename;
 
-					entityImages[key].push(img);
+					this.output[key].push(img);
 				}
 			}
 		},
@@ -508,6 +633,134 @@ function randfloat(from, to)
 		allLoaded: function()
 		{
 			return (this.numberImages != 0) && (this.numberImages == this.numberLoaded);
+		}
+	}
+
+	// ================================================================================================================SoundPreloader================================================================================================================
+	var SoundPreloader = function(input, output, onLoadedCallback)
+	{
+		this.numberImages = 0;
+		this.numberLoaded = 0;
+		this.onLoadedCallback = onLoadedCallback;
+
+		this.input = input;
+		this.output = output;
+
+		var self = this;
+
+		this.oncanplaythrough = function()
+		{
+			self.numberLoaded++;
+			if(self.allLoaded())
+				self.onLoadedCallback();
+		}
+	}
+	SoundPreloader.prototype =
+	{
+		preload: function()
+		{
+			for(var key in this.input)
+			{
+				this.numberImages += this.input[key].length;
+
+				this.output[key] = [];
+
+				for(var i = 0; i<this.input[key].length; i++)
+				{
+					var filename = this.input[key][i];
+
+					var snd = new Audio();
+					snd.oncanplaythrough = this.oncanplaythrough;
+					snd.src = filename;
+					snd.volume = 0.5;
+
+					this.output[key].push(snd);
+				}
+			}
+		},
+
+		allLoaded: function()
+		{
+			return (this.numberImages != 0) && (this.numberImages == this.numberLoaded);
+		}
+	}
+
+	// ================================================================================================================SndPlayer================================================================================================================
+	var SndPlayer = function(sndArray)
+	{
+		this.sounds = {};
+		this.free = {};
+
+		for(var key in sndArray)
+		{
+			this.sounds[key] = [];
+			this.free[key] = [];
+
+			for(var i = 0; i<sndArray[key].length; i++)
+			{
+				this.sounds[key].push([]);
+				this.free[key].push([]);
+
+				var snd = sndArray[key][i];
+				for(var j = 0; j < clones; j++)
+				{
+					this.sounds[key][i].push(snd.cloneNode());
+					this.sounds[key][i][j].volume = 0.5;
+					this.free[key][i].push(true);
+				}
+			}
+		}
+
+		console.log(this.sounds);
+	}
+	SndPlayer.prototype =
+	{
+		play: function(key, ind, looped)
+		{
+			//var sounds = this.sounds[key][ind];
+
+			for(var i = 0; i<this.free[key][ind].length; i++)
+			{
+				if(this.free[key][ind][i])
+				{
+					var self = this;
+					var freeSound = function()
+					{
+						if(looped)
+						{
+							self.sounds[key][ind][i].currentTime = 0;
+							self.sounds[key][ind][i].play();
+						}
+						else
+							self.free[key][ind][i] = true;
+					}
+					this.sounds[key][ind][i].play();
+					this.sounds[key][ind][i].onended = freeSound;
+
+					this.free[key][ind][i] = false;
+
+					break;
+				}
+			}
+		},
+
+		stop: function(key)
+		{
+			for(var ind = 0; ind < this.sounds[key].length; ind++)
+			{
+				for(var i = 0; i<clones; i++)
+				{
+					this.sounds[key][ind][i].pause();
+					this.sounds[key][ind][i].currentTime = 0;
+					this.free[key][ind][i] = true;
+				}
+			}
+		},
+
+		setVolume: function(key, ind, vol)
+		{
+			for(var i = 0; i<clones; i++)
+				this.sounds[key][ind][i].volume = vol;
 		}
 	}
 
@@ -561,6 +814,8 @@ function randfloat(from, to)
 
 		this.timerId = -1;
 		this.animEnded = false;
+
+		this.alpha = 1;
 	}
 
 	Sprite.prototype =
@@ -573,6 +828,7 @@ function randfloat(from, to)
 
 				ctx.translate(this.obj.pos.x + offsets[i][0], this.obj.pos.y + offsets[i][1]);
 				ctx.rotate(-this.obj.angle);
+				ctx.globalAlpha = this.alpha;
 
 				var col = this.curFrame % this.cols;
 				var row = ~~(this.curFrame / this.cols); // integer division
@@ -613,6 +869,24 @@ function randfloat(from, to)
 			this.timerId = setInterval(nextFrame, dt);
 		},
 
+		fadeAwayFor: function(period)
+		{
+			var self = this;
+			var steps = 100;
+			var delta = 1/steps;
+			var nextStep = function()
+			{
+				self.alpha -= delta;
+				if(self.alpha <= 0)
+				{
+					clearInterval(self.timerId);
+				}
+			}
+
+			this.alpha = 1;
+			this.timerId = setInterval(nextStep, period / steps);
+		},
+
 		setScale: function(scale)
 		{
 			this.scale = scale;
@@ -627,6 +901,11 @@ function randfloat(from, to)
 		calcRadius: function()
 		{
 			this.radius = this.frameSize.width / 2 * this.scale;
+		},
+
+		setAlpha: function(alpha)
+		{
+			this.alpha = alpha;
 		}
 	}
 
@@ -706,34 +985,35 @@ function randfloat(from, to)
 		this.sprite = new Sprite(this, entityImages.SHIP[0], LayoutType.LINEAR, 2, 2);
 		this.sprite.setFrame(0);
 
+		this.shield = new Shield();
+
 		this.thrust = false;
 
 		this.invulnerable = false;
+
+		this.isOnCanvas = true;
 	}
 	Ship.prototype =
 	{
 		draw: function(ctx)
 		{
-			this.super.draw.apply(this, [ctx]);
-			if(this.invulnerable)
+			if(this.isOnCanvas)
 			{
-				for(var i = 0; i<offsets.length; i++)
+				this.super.draw.apply(this, [ctx]);
+				if(this.invulnerable)
 				{
-					ctx.beginPath();
-					ctx.arc(this.pos.x + offsets[i][0], this.pos.y + offsets[i][1], this.sprite.radius, 0, 2*Math.PI);
-					ctx.strokeStyle = "#00FF00";
-					ctx.stroke();
+					this.shield.draw(ctx);
 				}
-			}
 
-			if(DEBUG)
-			{
-				for(var i = 0; i<offsets.length; i++)
+				if(DEBUG)
 				{
-					ctx.beginPath();
-					ctx.arc(this.pos.x + offsets[i][0], this.pos.y + offsets[i][1], this.sprite.radius+shipBufferZone, 0, 2*Math.PI);
-					ctx.strokeStyle = "#FF0000";
-					ctx.stroke();
+					for(var i = 0; i<offsets.length; i++)
+					{
+						ctx.beginPath();
+						ctx.arc(this.pos.x + offsets[i][0], this.pos.y + offsets[i][1], this.sprite.radius+shipBufferZone, 0, 2*Math.PI);
+						ctx.strokeStyle = "#FF0000";
+						ctx.stroke();
+					}
 				}
 			}
 		},
@@ -745,8 +1025,10 @@ function randfloat(from, to)
 				this.velocity.x += acc * Math.cos(this.angle) * dt / 1000;
 				this.velocity.y -= acc * Math.sin(this.angle) * dt / 1000;
 			}
-			this.velocity.x *= (1-fricK);
-			this.velocity.y *= (1-fricK);
+			this.velocity.x *= (1-fricK * dt / 1000);
+			this.velocity.y *= (1-fricK * dt / 1000);
+
+			this.shield.update(dt);
 
 			this.super.update.apply(this, [dt]);
 		},
@@ -761,14 +1043,46 @@ function randfloat(from, to)
 		{
 			var self = this;
 			this.invulnerable = true;
+			this.shield.pos = this.pos;
+			this.shield.setAngularVelocity(Math.PI);
+			this.shield.sprite.fadeAwayFor(timeout);
+
 			var onTimeoutEnd = function()
 			{
 				self.invulnerable = false;
 			}
 			setTimeout(onTimeoutEnd, timeout);
+		},
+
+		reset: function(timeout)
+		{
+			this.isOnCanvas = false;
+			var self = this;
+			var showShip = function()
+			{
+				self.setPos(gameSize.width/2, gameSize.height/2);
+				self.setAngle(Math.PI / 2);
+				self.setVelocity(0, 0);
+				self.setInvulnerabilityFor(invulnerabilityInterval);
+				self.isOnCanvas = true;
+			}
+			setTimeout(showShip, timeout);
 		}
 	}
 	inherit_B(Ship, Entity);
+
+	// ================================================================================================================Shield================================================================================================================
+	var Shield = function()
+	{
+		Entity.call(this);
+		this.sprite = new Sprite(this, entityImages.SHIELD[0], LayoutType.LINEAR, 1, 1);
+		this.sprite.setFrame(0);
+	}
+	Shield.prototype =
+	{
+		
+	}
+	inherit_B(Shield, Entity);
 
 	// ================================================================================================================Shot================================================================================================================
 	var Shot = function(type)
@@ -794,12 +1108,11 @@ function randfloat(from, to)
 	inherit_B(Shot, Entity);
 
 	// ================================================================================================================Rock================================================================================================================
-	var Rock = function(type, size)
+	var Rock = function(type)
 	{
 		Entity.call(this);
 		this.sprite = new Sprite(this, entityImages.ROCK[type], LayoutType.LINEAR, 1, 1);
-
-		this.size = size;
+		this.type = type;
 	}
 	Rock.prototype =
 	{
@@ -811,12 +1124,11 @@ function randfloat(from, to)
 	inherit_B(Rock, Entity);
 
 	// ================================================================================================================Explosion================================================================================================================
-	var Explosion = function(type, size, animLength)
+	var Explosion = function(type, animLength)
 	{
 		Entity.call(this);
 		this.sprite = new Sprite(this, entityImages.EXPLOSION[type], LayoutType.GRID, 64, 8);
 
-		this.size = size;
 		this.animLength = animLength;
 	}
 	Explosion.prototype =
