@@ -146,6 +146,8 @@ function constrain(val, from, to)
 	var invulnerabilityInterval = 5000;
 	var minRockSpeed = 50;
 	var maxRockSpeed = 250;
+	var minRockScale = 0.5;
+	var maxRockScale = 1.2;
 	var FPSUpdatePeriod = 250;
 	var clones = 10;
 
@@ -166,6 +168,7 @@ function constrain(val, from, to)
 		self.gameOver = true;
 
 		this.started = false;
+
 		this.resLoaded = false;
 		this.sndLoaded = false;
 		this.imgLoaded = false;
@@ -240,10 +243,7 @@ function constrain(val, from, to)
 				rock.setAngle(randfloat(-Math.PI, Math.PI));
 				rock.setAngularVelocity(randfloat(-Math.PI, Math.PI));
 
-				var scale = 0.8 - self.score*0.0005;
-				scale = randfloat(scale-0.4, scale+0.4);
-				if(scale < 0.6)
-					scale = 0.6;
+				var scale = randfloat(minRockScale, maxRockScale);
 				rock.setScale(scale);
 
 				if(dist(self.ship, rock) > self.ship.sprite.radius + rock.sprite.radius + shipBufferZone)
@@ -338,9 +338,6 @@ function constrain(val, from, to)
 			}
 		}
 
-
-
-		//setInterval(tick, 1000 / FPS);
 		tick();
 		setInterval(spawnRock, 1000);
 	};
@@ -432,7 +429,7 @@ function constrain(val, from, to)
 
 					this.player.play("EXPLOSION", randint(0,3), false);
 
-					if(rock.sprite.scale > 0.5)
+					if(rock.sprite.scale > minRockScale)
 					{
 						rock1 = new Rock(rock.type);
 						rock2 = new Rock(rock.type);
