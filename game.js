@@ -31,6 +31,26 @@ function constrain(val, from, to)
 	return val;
 }
 
+function setCookie(cname,cvalue,exdays) {
+    var d = new Date();
+    d.setTime(d.getTime() + (exdays*24*60*60*1000));
+    var expires = "expires=" + d.toGMTString();
+    document.cookie = cname+"="+cvalue+"; "+expires;
+}
+
+function getCookie(cname) {
+    var name = cname + "=";
+    var ca = document.cookie.split(';');
+    for(var i=0; i<ca.length; i++) {
+        var c = ca[i];
+        while (c.charAt(0)==' ') c = c.substring(1);
+        if (c.indexOf(name) == 0) {
+            return c.substring(name.length, c.length);
+        }
+    }
+    return "";
+}
+
 (function()
 {
 	var SpriteType =
@@ -140,12 +160,12 @@ function constrain(val, from, to)
 	var ship_ang_vel = 1.5*Math.PI;
 	var acc = 400;
 	var shotSpeed = 500;
-	var maxRocks = 5;
+	var maxRocks = 3;
 	var shipBufferZone = 100;
 	var explLength = 1000;
 	var invulnerabilityInterval = 5000;
 	var minRockSpeed = 50;
-	var maxRockSpeed = 250;
+	var maxRockSpeed = 100;
 	var minRockScale = 0.5;
 	var maxRockScale = 1.2;
 	var FPSUpdatePeriod = 250;
@@ -336,7 +356,12 @@ function constrain(val, from, to)
 
 				self.player.play("SOUNDTRACK", 0, true);
 			}
-		}
+		};
+
+		console.log(document.cookie);
+		this.record = getCookie("record");
+		if(this.record == "")
+			this.record = "0";
 
 		tick();
 		setInterval(spawnRock, 1000);
@@ -440,7 +465,7 @@ function constrain(val, from, to)
 						rock1.setPos(rock.pos.x, rock.pos.y);
 						rock2.setPos(rock.pos.x, rock.pos.y);
 
-						var vel = Math.hypot(rock.velocity.x, rock.velocity.y);
+						var vel = 1.5*Math.hypot(rock.velocity.x, rock.velocity.y);
 						var angle = Math.atan2(rock.velocity.y, rock.velocity.x);
 
 						dAngle = randfloat(Math.PI/12, Math.PI/3);
@@ -448,8 +473,8 @@ function constrain(val, from, to)
 						rock1.setVelocity(vel*Math.cos(angle + dAngle), vel*Math.sin(angle + dAngle));
 						rock2.setVelocity(vel*Math.cos(angle - dAngle), vel*Math.sin(angle - dAngle));
 
-						rock1.setAngularVelocity(rock.ang_vel);
-						rock2.setAngularVelocity(-rock.ang_vel);
+						rock1.setAngularVelocity(randfloat(Math.PI/2, Math.PI));
+						rock2.setAngularVelocity(-randfloat(Math.PI/2, Math.PI));
 
 						this.rocks.push(rock1);
 						this.rocks.push(rock2);
@@ -457,6 +482,12 @@ function constrain(val, from, to)
 				}
 
 				this.score += 5*toDelRocks.length;
+				if(this.score > this.record)
+				{
+					this.record = this.score;
+					setCookie("record", this.record, 180);
+					console.log(document.cookie);
+				}
 
 				// Check rock-ship collisions
 				if(this.ship.isOnCanvas)
@@ -561,7 +592,7 @@ function constrain(val, from, to)
 
 				ctx.font="20px Georgia"
 				ctx.fillStyle = '#FFFFFF';
-				ctx.fillText("Score: "+this.score, 10, 30);
+				ctx.fillText("Score: "+this.score+"\t Record: "+this.record, 10, 30);
 				if(this.gameOver)
 					ctx.fillText("Game over. Press Enter to play again", 10, 60);
 				else
@@ -707,8 +738,6 @@ function constrain(val, from, to)
 				}
 			}
 		}
-
-		console.log(this.sounds);
 	}
 	SndPlayer.prototype =
 	{
