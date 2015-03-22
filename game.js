@@ -631,6 +631,8 @@ function getCookie(cname) {
 		this.onLoaded = function()
 		{
 			self.numberLoaded++;
+			console.log(this.src + ' loaded ('+self.numberLoaded+'\\'+self.numberImages+')');
+
 			if(self.allLoaded())
 				self.onLoadedCallback();
 		}
@@ -679,6 +681,8 @@ function getCookie(cname) {
 		this.oncanplaythrough = function()
 		{
 			self.numberLoaded++;
+			console.log(this.src + ' loaded ('+self.numberLoaded+'\\'+self.numberImages+')');
+			
 			if(self.allLoaded())
 				self.onLoadedCallback();
 		}
