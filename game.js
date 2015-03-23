@@ -31,6 +31,12 @@ function constrain(val, from, to)
 	return val;
 }
 
+function hypot(x, y)
+{
+	var yx = y / x;
+	return Math.abs(x) * Math.sqrt(1 + yx*yx);
+}
+
 function setCookie(cname,cvalue,exdays) {
     var d = new Date();
     d.setTime(d.getTime() + (exdays*24*60*60*1000));
@@ -119,7 +125,7 @@ function getCookie(cname) {
 			var pos2x	= obj2.pos.x + offsets[i][0];
 			var pos2y	= obj2.pos.y + offsets[i][1];
 
-			var dst = Math.hypot(pos1x-pos2x, pos1y-pos2y);
+			var dst = hypot(pos1x-pos2x, pos1y-pos2y);
 			if(minDist === undefined || minDist > dst)
 				minDist = dst;
 		}
@@ -237,6 +243,12 @@ function getCookie(cname) {
 		this.player.setVolume("THRUST_ON", 0, 1);
 		this.player.setVolume("THRUST_OFF", 0, 1);
 
+		for(var i = 0; i<sndFiles.EXPLOSION.length; i++)
+		{
+			this.player.setVolume("EXPLOSION", i, 1);
+		}
+		this.player.setVolume("SHIP_EXPLOSION", 0, 1);
+
 		this.ship;
 
 		this.rocks = [];
@@ -267,7 +279,9 @@ function getCookie(cname) {
 				rock.setScale(scale);
 
 				if(dist(self.ship, rock) > self.ship.sprite.radius + rock.sprite.radius + shipBufferZone)
+				{
 					self.rocks.push(rock);
+				}
 			}
 		}
 
@@ -358,7 +372,6 @@ function getCookie(cname) {
 			}
 		};
 
-		console.log(document.cookie);
 		this.record = getCookie("record");
 		if(this.record == "")
 			this.record = "0";
@@ -465,7 +478,7 @@ function getCookie(cname) {
 						rock1.setPos(rock.pos.x, rock.pos.y);
 						rock2.setPos(rock.pos.x, rock.pos.y);
 
-						var vel = 1.5*Math.hypot(rock.velocity.x, rock.velocity.y);
+						var vel = 1.5*hypot(rock.velocity.x, rock.velocity.y);
 						var angle = Math.atan2(rock.velocity.y, rock.velocity.x);
 
 						dAngle = randfloat(Math.PI/12, Math.PI/3);
@@ -486,7 +499,6 @@ function getCookie(cname) {
 				{
 					this.record = this.score;
 					setCookie("record", this.record, 180);
-					console.log(document.cookie);
 				}
 
 				// Check rock-ship collisions
