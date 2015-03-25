@@ -80,7 +80,7 @@ function getCookie(cname) {
 
 	var entityFiles =
 	{
-		SHIP			: ["res\\img\\ship.png"],
+		SHIP			: ["res\\img\\ship1.png"],
 		SHOT			: ["res\\img\\shot0.png", "res\\img\\shot1.png", "res\\img\\shot2.png"],
 		ROCK			: ["res\\img\\rock0.png", "res\\img\\rock1.png", "res\\img\\rock2.png", "res\\img\\rock3.png", "res\\img\\rock4.png", "res\\img\\rock5.png", "res\\img\\rock6.png"],
 		BACKGROUND		: ["res\\img\\background0.png", "res\\img\\background1.png", "res\\img\\background2.png", "res\\img\\background3.png", "res\\img\\background4.png", "res\\img\\background5.png"],
@@ -177,7 +177,7 @@ function getCookie(cname) {
 	var FPSUpdatePeriod = 250;
 	var clones = 10;
 
-	var DEBUG = false;
+	var DEBUG = true;
 
 	// ================================================================================================================Game================================================================================================================
 	var Game = function(canvasId)
@@ -1028,6 +1028,7 @@ function getCookie(cname) {
 		this.sprite.setFrame(0);
 
 		this.shield = new Shield();
+		this.shield.setScale(this.sprite.radius / this.shield.sprite.radius);
 
 		this.thrust = false;
 
