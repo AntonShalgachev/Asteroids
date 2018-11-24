@@ -1,3 +1,5 @@
+# A simple HTML5 game developed for the university project
+
 ## Controls
 * W - Accelerate
 * A, D - Steering
